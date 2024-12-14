@@ -1,0 +1,78 @@
+---
+title: "Sentiment-Analysis-Aposaga-Layson-Tiad"
+author: "James Cedrick Tiad"
+date: "2024-12-14"
+output: pdf_document
+---
+
+```{r}
+library(tidyverse)
+library(lubridate)
+library(syuzhet)
+library(furrr) 
+```
+
+```{r}
+data <- read.csv("tweetsDF.csv")
+
+head(data)
+
+data <- data %>% distinct()
+
+data <- data %>% filter(!is.na(text) & !is.na(created))
+
+data$created <- ymd_hms(data$created)
+
+data$text <- str_squish(data$text)
+```
+
+```{r}
+data_daily <- data %>%
+  mutate(date = as.Date(created)) %>%
+  group_by(date) %>%
+  summarise(tweet_count = n())
+
+trend_plot <- ggplot(data_daily, aes(x = date, y = tweet_count)) +
+  geom_line(color = "blue") +
+  labs(title = "Daily Tweet Trends",
+       x = "Date",
+       y = "Number of Tweets") +
+  theme_minimal()
+
+print(trend_plot)
+```
+
+```{r}
+process_sentiment <- function(text_batch) {
+  return(get_nrc_sentiment(text_batch))
+}
+
+plan(multisession) 
+sentiments_list <- future_map(split(data$text, ceiling(seq_along(data$text) / 1000)), process_sentiment)
+
+sentiments <- bind_rows(sentiments_list)
+
+data_sentiment <- cbind(data, sentiments)
+
+sentiment_summary <- colSums(sentiments)
+```
+
+```{r}
+sentiment_summary_df <- as.data.frame(sentiment_summary) %>%
+  rownames_to_column(var = "sentiment") %>%
+  rename(score = sentiment_summary)
+
+sentiment_plot <- ggplot(sentiment_summary_df, aes(x = reorder(sentiment, score), y = score, fill = sentiment)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(title = "Overall Sentiment Distribution",
+       x = "Sentiment",
+       y = "Score") +
+  theme_minimal()
+
+print(sentiment_plot)
+
+ggsave("tweet_trend_plot.png", plot = trend_plot)
+ggsave("sentiment_distribution_plot.png", plot = sentiment_plot)
+```
+
